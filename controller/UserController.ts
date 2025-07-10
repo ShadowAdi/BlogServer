@@ -366,3 +366,76 @@ export const toggleLike = CustomTryCatch(
     }
   }
 );
+
+
+export const toggleDisLike = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    const { blogId } = req.params;
+
+    if (!user) {
+      logger.error(`Failed to get the authenticated user ${user}`);
+      console.log(`Failed to get the authenticated user ${user}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${user}`, 404)
+      );
+    }
+    const { sub } = user;
+    if (!sub) {
+      logger.error(`Failed to get the authenticated user ${sub}`);
+      console.log(`Failed to get the authenticated user ${sub}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${sub}`, 404)
+      );
+    }
+    const userFound = await prismaClient.user.findUnique({
+      where: { id: sub },
+    });
+    if (!userFound) {
+      logger.error(`User With Id Do Not Exist: ${sub}`);
+      console.log(`User With Id Do Not Exist: ${sub}`);
+      return next(new AppError(`User With Id Do Not Exist: ${sub}`, 404));
+    }
+
+    if (!blogId) {
+      logger.error(`Blog ID Not Found`);
+      return next(new AppError(`Blog ID Not Found`, 401));
+    }
+    const isBlogExist = await prismaClient.blog.findFirst({
+      where: {
+        id: Number(blogId),
+      },
+    });
+    if (!isBlogExist) {
+      logger.error("Failed to find Blog");
+      return next(new AppError("Failed to find Blog", 404));
+    }
+
+    const isAlredyDisLiked = await prismaClient.dislike.findFirst({
+      where: {
+        blogId: Number(blogId),
+        userId: user.sub,
+      },
+    });
+
+    if (isAlredyDisLiked) {
+      await prismaClient.dislike.delete({
+        where: {
+          id: isAlredyDisLiked.id,
+        },
+      });
+      return res.status(200).json({
+        messaged: "Remove from disliked blog",
+        success: true,
+      });
+    } else {
+      await prismaClient.dislike.create({
+        data: {
+          blogId: Number(blogId),
+          userId: user.sub,
+        },
+      });
+      return res.status(200).json({ message: "Blog Disliked", success: true });
+    }
+  }
+);
