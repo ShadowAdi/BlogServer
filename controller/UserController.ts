@@ -1,0 +1,296 @@
+import { NextFunction, Request, Response } from "express";
+import { CustomTryCatch } from "../utils/CustomTryCatch.js";
+import { prismaClient } from "../db/prisma.js";
+import { logger } from "../utils/logger.js";
+import { AppError } from "../utils/AppError.js";
+import bcrypt from "bcrypt";
+import { TokenGenerator } from "../utils/TokenGenerator.js";
+
+export const CreateUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { name, email, password } = req.body;
+    if (!email || !password || !name) {
+      logger.error(
+        "Fields are not provided email: " +
+          email +
+          " and password is: " +
+          password
+      );
+      return next(
+        new AppError(
+          `Required Data is not present Email:${email},password:${password}`,
+          404
+        )
+      );
+    }
+    const user = await prismaClient.user.findUnique({
+      where: { email: email },
+    });
+    if (user) {
+      logger.error(`User already exists with the mail: ${email}`);
+      return next(
+        new AppError(`User already exists with the mail: ${email}`, 404)
+      );
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await prismaClient.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+      },
+    });
+    return res.status(201).json({
+      message: "User is Created",
+      newUser,
+      success: true,
+    });
+  }
+);
+
+export const GetAllUsers = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const users = await prismaClient.user.findMany();
+    return res.status(200).json({
+      message: "Users Found",
+      success: true,
+      users,
+    });
+  }
+);
+
+export const GetSingleUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { userId } = req.params;
+
+    const user = await prismaClient.user.findFirst({
+      where: {
+        id: Number(userId),
+      },
+      select: {
+        email: true,
+        createdAt: true,
+        id: true,
+        name: true,
+        blogs: {
+          select: {
+            title: true,
+            blogImage: true,
+            id: true,
+          },
+        },
+        likes: {
+          select: {
+            blogId: true,
+            blog: {
+              select: {
+                id: true,
+                title: true,
+                blogImage: true,
+              },
+            },
+          },
+        },
+        dislikes: {
+          select: {
+            blogId: true,
+            blog: {
+              select: {
+                id: true,
+                title: true,
+                blogImage: true,
+              },
+            },
+          },
+        },
+
+        _count: {
+          select: {
+            blogs: true,
+            likes: true,
+            dislikes: true,
+          },
+        },
+      },
+    });
+    return res.status(200).json({
+      message: "User Found",
+      success: true,
+      user,
+    });
+  }
+);
+
+export const LoginUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password: bodyPassword } = req.body;
+    if (!email || !bodyPassword) {
+      logger.error(
+        "Fields are not provided email: " +
+          email +
+          " and password is: " +
+          bodyPassword
+      );
+      return next(
+        new AppError(
+          `Required Data is not present Email:${email},password:${bodyPassword}`,
+          404
+        )
+      );
+    }
+
+    const user = await prismaClient.user.findUnique({
+      where: { email: email },
+    });
+    if (!user) {
+      logger.error(
+        `User don't exists with the mail: ${email}. Try To Register`
+      );
+      return next(
+        new AppError(
+          `User already exists with the mail: ${email}. Try To Register`,
+          404
+        )
+      );
+    }
+    const isPasswordCorrect = await bcrypt.compare(bodyPassword, user.password);
+    if (!isPasswordCorrect) {
+      logger.error(`Invalid Credentials`);
+      return next(new AppError(`Invalid Credentials`, 401));
+    }
+
+    const payload = {
+      email: user.email,
+      sub: user.id,
+    };
+
+    const { password, ...data } = user;
+
+    const token = await TokenGenerator(payload);
+    return res.status(200).json({
+      token: token,
+      data,
+      success: true,
+      message: "Login Successfull",
+    });
+  }
+);
+
+export const AuthenticatedUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) {
+      logger.error(`Failed to get the authenticated user ${user}`);
+      console.log(`Failed to get the authenticated user ${user}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${user}`, 404)
+      );
+    }
+    const { email, sub } = user;
+    if (!sub) {
+      logger.error(`Failed to get the authenticated user ${sub}`);
+      console.log(`Failed to get the authenticated user ${sub}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${sub}`, 404)
+      );
+    }
+    const userFound = await prismaClient.user.findUnique({
+      where: { id: sub },
+      select: {
+        email: true,
+        createdAt: true,
+        id: true,
+        name: true,
+      },
+    });
+
+    if (!userFound) {
+      logger.error(`User With Id Do Not Exist: ${sub}`);
+      console.log(`User With Id Do Not Exist: ${sub}`);
+      return next(new AppError(`User With Id Do Not Exist: ${sub}`, 404));
+    }
+    if (userFound.email !== email) {
+      logger.error(`User With email Do Not Exist: ${email}`);
+      console.log(`User With email Do Not Exist: ${email}`);
+      return next(new AppError(`User With email Do Not Exist: ${email}`, 404));
+    }
+    return res.status(200).json({
+      statusCode: 200,
+      user: userFound,
+      message: "User Found",
+      success: true,
+    });
+  }
+);
+
+export const UpdateUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) {
+      logger.error(`Failed to get the authenticated user ${user}`);
+      console.log(`Failed to get the authenticated user ${user}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${user}`, 404)
+      );
+    }
+    const { sub } = user;
+    if (!sub) {
+      logger.error(`Failed to get the authenticated user ${sub}`);
+      console.log(`Failed to get the authenticated user ${sub}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${sub}`, 404)
+      );
+    }
+    const userFound = await prismaClient.user.findUnique({
+      where: { id: sub },
+    });
+    if (!userFound) {
+      logger.error(`User With Id Do Not Exist: ${sub}`);
+      console.log(`User With Id Do Not Exist: ${sub}`);
+      return next(new AppError(`User With Id Do Not Exist: ${sub}`, 404));
+    }
+
+    const data = req.body;
+    const updateData: { name?: string } = {};
+    if (data.name !== undefined) updateData.name = data.name;
+
+    await prismaClient.user.update({
+      where: { id: user.sub },
+      data: updateData,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "User is updated",
+    });
+  }
+);
+
+export const DeleteUser = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user || !user.sub) {
+      logger.error(`Failed to get the authenticated user`);
+      return next(new AppError(`Failed to get the authenticated user`, 404));
+    }
+
+    const userId = user.sub;
+
+    const userFound = await prismaClient.user.findUnique({
+      where: { id: userId },
+    });
+    if (!userFound) {
+      logger.error(`User with id does not exist: ${userId}`);
+      return next(new AppError(`User with id does not exist: ${userId}`, 404));
+    }
+
+    await prismaClient.user.delete({
+      where: { id: userId },
+    });
+
+    return res.status(200).json({
+      message: "User is deleted",
+      success: true,
+    });
+  }
+);
