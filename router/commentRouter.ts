@@ -5,6 +5,7 @@ import {
   CreateComment,
   DeleteComment,
   GetAllComments,
+  UpdateComment,
 } from "../controller/CommentController.js";
 
 export const CommentRouter = express.Router();
@@ -12,3 +13,4 @@ export const CommentRouter = express.Router();
 CommentRouter.get("/:blogId", GetAllComments);
 CommentRouter.post("/:blogId", authMiddleware, CreateComment);
 CommentRouter.delete("/comment/:commentId",authMiddleware,DeleteComment)
+CommentRouter.patch("/comment/:commentId",authMiddleware,UpdateComment)
