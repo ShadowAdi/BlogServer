@@ -6,6 +6,7 @@ import {
   GetAllUsers,
   GetSingleUser,
   LoginUser,
+  toggleLike,
   UpdateUser,
 } from "../controller/UserController.js";
 import { authMiddleware } from "../middlewares/AuthCheck.js";
@@ -19,3 +20,5 @@ UserRouter.get("/user/:userId", GetSingleUser);
 UserRouter.patch("/user/:userId", authMiddleware, UpdateUser);
 UserRouter.get("/user/:userId", authMiddleware, AuthenticatedUser);
 UserRouter.delete("/user/:userId", authMiddleware, DeleteUser);
+UserRouter.patch("/user/like/:blogId", authMiddleware, toggleLike);
+UserRouter.patch("/user/dislike/:blogId", authMiddleware, toggleLike);

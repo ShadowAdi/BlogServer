@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from "express";
+import e, { NextFunction, Request, Response } from "express";
 import { CustomTryCatch } from "../utils/CustomTryCatch.js";
 import { prismaClient } from "../db/prisma.js";
 import { logger } from "../utils/logger.js";
@@ -292,5 +292,77 @@ export const DeleteUser = CustomTryCatch(
       message: "User is deleted",
       success: true,
     });
+  }
+);
+
+export const toggleLike = CustomTryCatch(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    const { blogId } = req.params;
+
+    if (!user) {
+      logger.error(`Failed to get the authenticated user ${user}`);
+      console.log(`Failed to get the authenticated user ${user}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${user}`, 404)
+      );
+    }
+    const { sub } = user;
+    if (!sub) {
+      logger.error(`Failed to get the authenticated user ${sub}`);
+      console.log(`Failed to get the authenticated user ${sub}`);
+      return next(
+        new AppError(`Failed to get the authenticated user ${sub}`, 404)
+      );
+    }
+    const userFound = await prismaClient.user.findUnique({
+      where: { id: sub },
+    });
+    if (!userFound) {
+      logger.error(`User With Id Do Not Exist: ${sub}`);
+      console.log(`User With Id Do Not Exist: ${sub}`);
+      return next(new AppError(`User With Id Do Not Exist: ${sub}`, 404));
+    }
+
+    if (!blogId) {
+      logger.error(`Blog ID Not Found`);
+      return next(new AppError(`Blog ID Not Found`, 401));
+    }
+    const isBlogExist = await prismaClient.blog.findFirst({
+      where: {
+        id: Number(blogId),
+      },
+    });
+    if (!isBlogExist) {
+      logger.error("Failed to find Blog");
+      return next(new AppError("Failed to find Blog", 404));
+    }
+
+    const isAlredyLiked = await prismaClient.like.findFirst({
+      where: {
+        blogId: Number(blogId),
+        userId: user.sub,
+      },
+    });
+
+    if (isAlredyLiked) {
+      await prismaClient.like.delete({
+        where: {
+          id: isAlredyLiked.id,
+        },
+      });
+      return res.status(200).json({
+        messaged: "Remove from liked blog",
+        success: true,
+      });
+    } else {
+      await prismaClient.like.create({
+        data: {
+          blogId: Number(blogId),
+          userId: user.sub,
+        },
+      });
+      return res.status(200).json({ message: "Blog liked", success: true });
+    }
   }
 );

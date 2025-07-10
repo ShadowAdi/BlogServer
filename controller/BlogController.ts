@@ -173,7 +173,7 @@ export const CreateBlog = CustomTryCatch(
 export const UpdatedBlog = CustomTryCatch(
   async (request: Request, response: Response, next: NextFunction) => {
     const user = request.user;
-    const blogId = request.params;
+    const {blogId} = request.params;
 
     if (!user) {
       logger.error(`Failed to get the authenticated user ${user}`);
